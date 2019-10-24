@@ -79,6 +79,8 @@ struct take_last : public operator_base<T>
             }
             queue_type items;
             output_type out;
+            std::mutex lock;
+            bool is_completed = false;
         };
         // take a copy of the values for each subscription
         auto state = std::make_shared<state_type>(initial, s);
@@ -93,10 +95,17 @@ struct take_last : public operator_base<T>
         // on_next
             [state, source_lifetime](T t) {
                 if(state->count > 0) {
-                    if (state->items.size() == state->count) {
-                        state->items.pop();
+                    {
+                        std::lock_guard<std::mutex> guard(state->lock);
+                        if (!state->is_completed)
+                        {
+                            if (state->items.size() == state->count)
+                            {
+                                state->items.pop();
+                            }
+                            state->items.push(t);
+                        }
                     }
-                    state->items.push(t);
                 }
             },
         // on_error
@@ -105,9 +114,16 @@ struct take_last : public operator_base<T>
             },
         // on_completed
             [state]() {
-                while(!state->items.empty()) {
-                    state->out.on_next(std::move(state->items.front()));
-                    state->items.pop();
+                queue_type state_items;
+                {
+                    std::lock_guard<std::mutex> guard(state->lock);
+                    state->is_completed = true;
+                    state_items = std::move(state->items);
+                }
+                while(!state_items.empty()) {
+
+                    state->out.on_next(std::move(state_items.front()));
+                    state_items.pop();
                 }
                 state->out.on_completed();
             }
