@@ -106,12 +106,15 @@ public:
         : b(std::make_shared<binder_type>(cs))
     {
         std::weak_ptr<binder_type> binder = b;
-        b->state->lifetime.add([binder](){
+        b->state->lifetime.add([binder]() {
             auto b = binder.lock();
-            if (b && b->state->current == mode::Casting){
-                b->state->current = mode::Disposed;
-                b->current_completer.reset();
-                b->completer.reset();
+            if (b) {
+                std::lock_guard<std::recursive_mutex> guard(b->state->lock);
+                if (b->state->current == mode::Casting) {
+                    b->state->current = mode::Disposed;
+                    b->current_completer.reset();
+                    b->completer.reset();
+                }
             }
         });
     }
