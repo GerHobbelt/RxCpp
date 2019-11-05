@@ -38,7 +38,7 @@ class multicast_observer
             , lifetime(cs)
         {
         }
-        std::mutex lock;
+        std::recursive_mutex lock;
         typename mode::type current;
         std::exception_ptr error;
         composite_subscription lifetime;
@@ -125,26 +125,30 @@ public:
         return make_subscriber<T>(get_id(), get_subscription(), observer<T, detail::multicast_observer<T>>(*this));
     }
     bool has_observers() const {
-        std::unique_lock<std::mutex> guard(b->state->lock);
+        std::lock_guard<std::recursive_mutex> guard(b->state->lock);
         return b->completer && !b->completer->observers.empty();
     }
     template<class SubscriberFrom>
     void add(const SubscriberFrom& sf, observer_type o) const {
         trace_activity().connect(sf, o);
-        std::unique_lock<std::mutex> guard(b->state->lock);
+        std::unique_lock<std::recursive_mutex> guard(b->state->lock);
         switch (b->state->current) {
         case mode::Casting:
             {
                 if (o.is_subscribed()) {
                     std::weak_ptr<binder_type> binder = b;
-                    o.add([=](){
+                    o.add([=]() {
                         auto b = binder.lock();
-                        if (b) {
-                            std::unique_lock<std::mutex> guard(b->state->lock);
+                        if (b)
+                        {
+                            std::lock_guard<std::recursive_mutex> guard(b->state->lock);
                             b->completer = std::make_shared<completer_type>(b->state, b->completer);
                         }
                     });
-                    b->completer = std::make_shared<completer_type>(b->state, b->completer, o);
+
+                    if (o.is_subscribed()) {
+                        b->completer = std::make_shared<completer_type>(b->state, b->completer, o);
+                    }
                 }
             }
             break;
@@ -178,7 +182,7 @@ public:
     void on_next(V v) const {
         auto current_completer = b->current_completer.lock();
         if (!current_completer) {
-            std::unique_lock<std::mutex> guard(b->state->lock);
+            std::lock_guard<std::recursive_mutex> guard(b->state->lock);
             b->current_completer = b->completer;
             current_completer = b->current_completer.lock();
         }
@@ -192,7 +196,7 @@ public:
         }
     }
     void on_error(std::exception_ptr e) const {
-        std::unique_lock<std::mutex> guard(b->state->lock);
+        std::unique_lock<std::recursive_mutex> guard(b->state->lock);
         if (b->state->current == mode::Casting) {
             b->state->error = e;
             b->state->current = mode::Errored;
@@ -211,7 +215,7 @@ public:
         }
     }
     void on_completed() const {
-        std::unique_lock<std::mutex> guard(b->state->lock);
+        std::unique_lock<std::recursive_mutex> guard(b->state->lock);
         if (b->state->current == mode::Casting) {
             b->state->current = mode::Completed;
             auto s = b->state->lifetime;
