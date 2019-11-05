@@ -117,7 +117,7 @@ struct merge
             observable<source_value_type, source_operator_type> source;
             // on_completed on the output must wait until all the
             // subscriptions have received on_completed
-            int pendingCompletions;
+            std::atomic<int> pendingCompletions;
             coordinator_type coordinator;
             output_type out;
         };
