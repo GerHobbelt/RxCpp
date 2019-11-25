@@ -76,12 +76,14 @@ private:
                 if (!keepAlive->q.empty()) std::terminate();
                 keepAlive->wake.notify_one();
 
-                if (keepAlive->worker.joinable() && keepAlive->worker.get_id() != std::this_thread::get_id()) {
-                    guard.unlock();
-                    keepAlive->worker.join();
-                }
-                else {
-                    keepAlive->worker.detach();
+                if (keepAlive->worker.joinable()) {
+                    if (keepAlive->worker.get_id() != std::this_thread::get_id()) {
+                        guard.unlock();
+                        keepAlive->worker.join();
+                    }
+                    else {
+                        keepAlive->worker.detach();
+                    }
                 }
             });
 
